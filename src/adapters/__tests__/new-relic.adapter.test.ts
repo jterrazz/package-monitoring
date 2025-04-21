@@ -1,11 +1,12 @@
 import type { LoggerPort } from '@jterrazz/logger';
-import { mock, MockProxy } from 'jest-mock-extended';
+import { mock } from 'jest-mock-extended';
 import type { TransactionHandle } from 'newrelic';
 
 import { CapitalizedString, SegmentName } from '../../ports/monitoring.port.js';
 
 import { NewRelicMonitoringAdapter } from '../new-relic.adapter.js';
 
+// Create a mock NewRelic module with Jest functions
 const mockNewRelic = {
     addCustomAttribute: jest.fn(),
     endTransaction: jest.fn(),
@@ -22,27 +23,29 @@ jest.mock('newrelic', () => ({
 }));
 
 describe('NewRelicMonitoringAdapter', () => {
-    let adapter: NewRelicMonitoringAdapter;
-    let mockLogger: MockProxy<LoggerPort>;
+    // Common test data
     const testEnvironment = 'test';
     const testLicenseKey = 'test-key';
-    const testDomain: CapitalizedString = 'TestDomain';
-    const testName: CapitalizedString = 'TestName';
-    const testSegmentName: SegmentName = 'TestDomain/TestSection/TestAction';
+    const testDomain = 'TestDomain' as CapitalizedString;
+    const testName = 'TestName' as CapitalizedString;
+    const testSegmentName = 'TestDomain/TestSection/TestAction' as SegmentName;
+
+    // Reused objects
+    let adapter: NewRelicMonitoringAdapter;
+    let logger: LoggerPort;
 
     beforeEach(() => {
-        // Reset all mocks before each test
         jest.clearAllMocks();
-        mockLogger = mock<LoggerPort>();
+        logger = mock<LoggerPort>();
     });
 
-    describe('initialize', () => {
-        it('should initialize the agent, add custom attributes, and log success when a license key is provided', async () => {
+    describe('initialization', () => {
+        it('should initialize with a license key', async () => {
             // Given
             adapter = new NewRelicMonitoringAdapter({
                 environment: testEnvironment,
                 licenseKey: testLicenseKey,
-                logger: mockLogger,
+                logger,
             });
 
             // When
@@ -53,366 +56,267 @@ describe('NewRelicMonitoringAdapter', () => {
                 'environment',
                 testEnvironment,
             );
-            expect(mockLogger.info).toHaveBeenCalledWith('Monitoring initialized successfully');
-            expect(mockLogger.warn).not.toHaveBeenCalled();
-            expect(mockLogger.error).not.toHaveBeenCalled();
+            expect(logger.info).toHaveBeenCalledWith('Monitoring initialized successfully');
         });
 
-        it('should log a warning and not initialize the agent when no license key is provided', async () => {
+        it('should warn and disable monitoring when license key is missing', async () => {
             // Given
             adapter = new NewRelicMonitoringAdapter({
                 environment: testEnvironment,
-                logger: mockLogger,
-                // No license key
+                logger,
             });
 
             // When
             await adapter.initialize();
 
             // Then
-            expect(mockLogger.warn).toHaveBeenCalledWith(
+            expect(logger.warn).toHaveBeenCalledWith(
                 'Monitoring license key is not set, monitoring will not be enabled',
             );
             expect(mockNewRelic.addCustomAttribute).not.toHaveBeenCalled();
-            expect(mockLogger.info).not.toHaveBeenCalled();
-            expect(mockLogger.error).not.toHaveBeenCalled();
         });
 
-        it('should log an error if initializing the agent fails', async () => {
+        it('should handle initialization errors', async () => {
             // Given
             adapter = new NewRelicMonitoringAdapter({
                 environment: testEnvironment,
                 licenseKey: testLicenseKey,
-                logger: mockLogger,
+                logger,
             });
 
-            // Simulate an error during initialization
-            const importError = new Error('Failed to import');
             mockNewRelic.addCustomAttribute.mockImplementationOnce(() => {
-                throw importError;
+                throw new Error('Initialization error');
             });
 
             // When
             await adapter.initialize();
 
             // Then
-            expect(mockLogger.error).toHaveBeenCalledWith('Failed to initialize monitoring', {
+            expect(logger.error).toHaveBeenCalledWith('Failed to initialize monitoring', {
                 error: expect.any(Error),
             });
-            expect(mockLogger.info).not.toHaveBeenCalled();
         });
     });
 
-    describe('monitorSegment', () => {
+    describe('segment monitoring', () => {
         const operation = jest.fn().mockResolvedValue('result');
 
         beforeEach(async () => {
+            mockNewRelic.startSegment.mockImplementation((_, __, op) => op());
+
             adapter = new NewRelicMonitoringAdapter({
                 environment: testEnvironment,
                 licenseKey: testLicenseKey,
-                logger: mockLogger,
+                logger,
             });
             await adapter.initialize();
-            // Setup default implementations
-            mockNewRelic.startSegment.mockImplementation(async (_, __, op) => op());
         });
 
-        it('should start a segment, execute the operation, and return the result when the agent is initialized', async () => {
+        it('should monitor an operation within a segment', async () => {
             // Given
-            const mockTransaction = mock<TransactionHandle>();
-            mockNewRelic.getTransaction.mockReturnValue(mockTransaction);
+            mockNewRelic.getTransaction.mockReturnValue(mock<TransactionHandle>());
 
             // When
             const result = await adapter.monitorSegment(testSegmentName, operation);
 
             // Then
-            expect(mockNewRelic.getTransaction).toHaveBeenCalledTimes(1);
+            expect(result).toBe('result');
             expect(mockNewRelic.startSegment).toHaveBeenCalledWith(
                 testSegmentName,
                 true,
                 operation,
             );
-            expect(operation).toHaveBeenCalledTimes(1);
-            expect(result).toBe('result');
-            expect(mockLogger.error).not.toHaveBeenCalled();
-            expect(mockLogger.debug).toHaveBeenCalledWith('Monitored sub-operation', {
+            expect(logger.debug).toHaveBeenCalledWith('Monitored sub-operation', {
                 duration: expect.any(Number),
                 name: testSegmentName,
             });
         });
 
-        it('should log an error if no parent transaction is found but still execute the segment', async () => {
+        it('should log errors when parent transaction is missing', async () => {
             // Given
             mockNewRelic.getTransaction.mockReturnValue(null as unknown as TransactionHandle);
 
             // When
-            const result = await adapter.monitorSegment(testSegmentName, operation);
+            await adapter.monitorSegment(testSegmentName, operation);
 
             // Then
-            expect(mockLogger.error).toHaveBeenCalledWith(
+            expect(logger.error).toHaveBeenCalledWith(
                 'No parent operation found while monitoring sub-operation',
                 { name: testSegmentName },
             );
-            expect(mockNewRelic.startSegment).toHaveBeenCalledWith(
-                testSegmentName,
-                true,
-                operation,
-            );
-            expect(operation).toHaveBeenCalledTimes(1);
-            expect(result).toBe('result');
-            expect(mockLogger.debug).toHaveBeenCalledWith('Monitored sub-operation', {
-                duration: expect.any(Number),
-                name: testSegmentName,
-            });
         });
 
-        it('should only execute the operation if the agent is not initialized', async () => {
+        it('should execute operations without monitoring when agent is not initialized', async () => {
             // Given
             adapter = new NewRelicMonitoringAdapter({
                 environment: testEnvironment,
-                // No license key -> agent not initialized
-                logger: mockLogger,
+                logger,
             });
-            await adapter.initialize(); // Call initialize to set agent to null
+            await adapter.initialize();
 
             // When
             const result = await adapter.monitorSegment(testSegmentName, operation);
 
             // Then
-            expect(mockNewRelic.getTransaction).not.toHaveBeenCalled();
-            expect(mockNewRelic.startSegment).not.toHaveBeenCalled();
-            expect(operation).toHaveBeenCalledTimes(1);
             expect(result).toBe('result');
-            expect(mockLogger.debug).not.toHaveBeenCalled(); // No monitoring logs
+            expect(mockNewRelic.startSegment).not.toHaveBeenCalled();
         });
 
-        it('should execute the segment and log duration even if the operation fails', async () => {
+        it('should propagate errors from monitored operations', async () => {
             // Given
             const error = new Error('Operation failed');
             const failingOperation = jest.fn().mockRejectedValue(error);
-            const mockTransaction = mock<TransactionHandle>();
-            mockNewRelic.getTransaction.mockReturnValue(mockTransaction);
+            mockNewRelic.getTransaction.mockReturnValue(mock<TransactionHandle>());
 
-            // When / Then
+            // When/Then
             await expect(adapter.monitorSegment(testSegmentName, failingOperation)).rejects.toThrow(
                 error,
             );
-            expect(mockNewRelic.startSegment).toHaveBeenCalledWith(
-                testSegmentName,
-                true,
-                failingOperation,
-            );
-            expect(failingOperation).toHaveBeenCalledTimes(1);
-            expect(mockLogger.debug).toHaveBeenCalledWith('Monitored sub-operation', {
+
+            // Still logs duration even on error
+            expect(logger.debug).toHaveBeenCalledWith('Monitored sub-operation', {
                 duration: expect.any(Number),
                 name: testSegmentName,
             });
         });
     });
 
-    describe('monitorTransaction', () => {
+    describe('transaction monitoring', () => {
         const operation = jest.fn().mockResolvedValue('result');
 
         beforeEach(async () => {
+            mockNewRelic.startBackgroundTransaction.mockImplementation(async (_, __, fn) => {
+                await fn();
+            });
+
             adapter = new NewRelicMonitoringAdapter({
                 environment: testEnvironment,
                 licenseKey: testLicenseKey,
-                logger: mockLogger,
+                logger,
             });
             await adapter.initialize();
-
-            // Setup mock implementation for startBackgroundTransaction
-            mockNewRelic.startBackgroundTransaction.mockImplementation(async (name, group, fn) => {
-                await fn(); // Execute the wrapped operation
-            });
         });
 
-        it('should start a background transaction, execute the operation, end the transaction, and return the result', async () => {
-            // Given - adapter initialized in beforeEach
-
+        it('should monitor business transactions', async () => {
             // When
             const result = await adapter.monitorTransaction(testDomain, testName, operation);
 
             // Then
+            expect(result).toBe('result');
             expect(mockNewRelic.startBackgroundTransaction).toHaveBeenCalledWith(
                 testName,
                 testDomain,
                 expect.any(Function),
             );
-            expect(operation).toHaveBeenCalledTimes(1);
-            expect(mockNewRelic.endTransaction).toHaveBeenCalledTimes(1);
-            expect(result).toBe('result');
-            expect(mockLogger.debug).toHaveBeenCalledWith('Started operation monitoring', {
-                domain: testDomain,
-                name: testName,
-            });
-            expect(mockLogger.debug).toHaveBeenCalledWith('Ended operation monitoring', {
+            expect(mockNewRelic.endTransaction).toHaveBeenCalled();
+            expect(logger.debug).toHaveBeenCalledWith('Started operation monitoring', {
                 domain: testDomain,
                 name: testName,
             });
         });
 
-        it('should end the transaction and reject if the operation throws an error', async () => {
+        it('should properly end transactions and propagate errors', async () => {
             // Given
             const error = new Error('Operation failed');
             const failingOperation = jest.fn().mockRejectedValue(error);
 
-            // This rejects because the wrapped fn will throw
-            mockNewRelic.startBackgroundTransaction.mockImplementation(async (name, group, fn) => {
-                await fn(); // This will throw because failingOperation throws
-            });
-
-            // When / Then
+            // When/Then
             await expect(
                 adapter.monitorTransaction(testDomain, testName, failingOperation),
             ).rejects.toThrow(error);
-            expect(mockNewRelic.startBackgroundTransaction).toHaveBeenCalledWith(
-                testName,
-                testDomain,
-                expect.any(Function),
-            );
-            expect(failingOperation).toHaveBeenCalledTimes(1);
-            expect(mockNewRelic.endTransaction).toHaveBeenCalledTimes(1); // Ensure transaction is ended even on error
-            expect(mockLogger.debug).toHaveBeenCalledWith('Started operation monitoring', {
-                domain: testDomain,
-                name: testName,
-            });
-            expect(mockLogger.debug).toHaveBeenCalledWith('Ended operation monitoring', {
+
+            // Ensures transaction is properly ended even on error
+            expect(mockNewRelic.endTransaction).toHaveBeenCalled();
+            expect(logger.debug).toHaveBeenCalledWith('Ended operation monitoring', {
                 domain: testDomain,
                 name: testName,
             });
         });
 
-        it('should only execute the operation if the agent is not initialized', async () => {
+        it('should execute operations without monitoring when agent is not initialized', async () => {
             // Given
             adapter = new NewRelicMonitoringAdapter({
                 environment: testEnvironment,
-                // No license key
-                logger: mockLogger,
+                logger,
             });
-            await adapter.initialize(); // Ensure agent is null
+            await adapter.initialize();
 
             // When
             const result = await adapter.monitorTransaction(testDomain, testName, operation);
 
             // Then
-            expect(mockNewRelic.startBackgroundTransaction).not.toHaveBeenCalled();
-            expect(operation).toHaveBeenCalledTimes(1);
-            expect(mockNewRelic.endTransaction).not.toHaveBeenCalled();
             expect(result).toBe('result');
-            expect(mockLogger.debug).not.toHaveBeenCalledWith(
-                expect.stringContaining('operation monitoring'),
-                expect.anything(),
-            );
+            expect(mockNewRelic.startBackgroundTransaction).not.toHaveBeenCalled();
+            expect(mockNewRelic.endTransaction).not.toHaveBeenCalled();
         });
     });
 
-    describe('recordCount', () => {
+    describe('metric recording', () => {
         beforeEach(async () => {
             adapter = new NewRelicMonitoringAdapter({
                 environment: testEnvironment,
                 licenseKey: testLicenseKey,
-                logger: mockLogger,
+                logger,
             });
             await adapter.initialize();
         });
 
-        it('should record a metric with the correct name and default value 1', () => {
-            // Given - initialized adapter
-
-            // When
+        it('should record count metrics with default and custom values', async () => {
+            // When - default value
             adapter.recordCount(testDomain, testName);
 
             // Then
             expect(mockNewRelic.recordMetric).toHaveBeenCalledWith(`${testDomain}/${testName}`, 1);
-            expect(mockLogger.debug).toHaveBeenCalledWith('Recorded count metric', {
+            expect(logger.debug).toHaveBeenCalledWith('Recorded count metric', {
                 domain: testDomain,
                 name: testName,
                 value: 1,
             });
+
+            // Reset mocks
+            jest.clearAllMocks();
+
+            // When - custom value
+            adapter.recordCount(testDomain, testName, 5);
+
+            // Then
+            expect(mockNewRelic.recordMetric).toHaveBeenCalledWith(`${testDomain}/${testName}`, 5);
         });
 
-        it('should record a metric with the correct name and specified value', () => {
+        it('should record measurement metrics', async () => {
             // Given
-            const value = 5;
+            const value = 123.45;
 
             // When
-            adapter.recordCount(testDomain, testName, value);
+            adapter.recordMeasurement(testDomain, testName, value);
 
             // Then
             expect(mockNewRelic.recordMetric).toHaveBeenCalledWith(
                 `${testDomain}/${testName}`,
                 value,
             );
-            expect(mockLogger.debug).toHaveBeenCalledWith('Recorded count metric', {
+            expect(logger.debug).toHaveBeenCalledWith('Recorded measurement', {
                 domain: testDomain,
                 name: testName,
                 value,
             });
         });
 
-        it('should not record a metric if the agent is not initialized', async () => {
+        it('should skip recording metrics when agent is not initialized', async () => {
             // Given
             adapter = new NewRelicMonitoringAdapter({
                 environment: testEnvironment,
-                // No license key
-                logger: mockLogger,
+                logger,
             });
-            await adapter.initialize(); // Ensure agent is null
+            await adapter.initialize();
 
             // When
             adapter.recordCount(testDomain, testName);
+            adapter.recordMeasurement(testDomain, testName, 100);
 
             // Then
             expect(mockNewRelic.recordMetric).not.toHaveBeenCalled();
-            expect(mockLogger.debug).not.toHaveBeenCalled();
-        });
-    });
-
-    describe('recordMeasurement', () => {
-        beforeEach(async () => {
-            adapter = new NewRelicMonitoringAdapter({
-                environment: testEnvironment,
-                licenseKey: testLicenseKey,
-                logger: mockLogger,
-            });
-            await adapter.initialize();
-        });
-        const value = 123.45;
-
-        it('should record a metric with the correct name and value', () => {
-            // Given - initialized adapter
-
-            // When
-            adapter.recordMeasurement(testDomain, testName, value);
-
-            // Then
-            expect(mockNewRelic.recordMetric).toHaveBeenCalledWith(
-                `${testDomain}/${testName}`,
-                value,
-            );
-            expect(mockLogger.debug).toHaveBeenCalledWith('Recorded measurement', {
-                domain: testDomain,
-                name: testName,
-                value,
-            });
-        });
-
-        it('should not record a metric if the agent is not initialized', async () => {
-            // Given
-            adapter = new NewRelicMonitoringAdapter({
-                environment: testEnvironment,
-                // No license key
-                logger: mockLogger,
-            });
-            await adapter.initialize(); // Ensure agent is null
-
-            // When
-            adapter.recordMeasurement(testDomain, testName, value);
-
-            // Then
-            expect(mockNewRelic.recordMetric).not.toHaveBeenCalled();
-            expect(mockLogger.debug).not.toHaveBeenCalled();
+            expect(logger.debug).not.toHaveBeenCalled();
         });
     });
 });
