@@ -1,6 +1,10 @@
-import { LoggerPort } from '@jterrazz/logger';
+import { type LoggerPort } from '@jterrazz/logger';
 
-import { CapitalizedString, MonitoringPort, SegmentName } from '../ports/monitoring.port.js';
+import {
+    type CapitalizedString,
+    type MonitoringPort,
+    type SegmentName,
+} from '../ports/monitoring.port.js';
 
 /**
  * No-operation implementation of the monitoring service.

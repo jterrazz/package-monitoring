@@ -1,5 +1,5 @@
 {
-  "name": "@jterrazz/monitoring",
+  "name": "@jterrazz/monitor",
   "author": "Jean-Baptiste Terrazzoni <contact@jterrazz.com>",
   "version": "1.0.0",
   "exports": {
@@ -21,7 +21,7 @@
     "@jterrazz/logger": "^1.1.0",
     "@jterrazz/quality": "^2.2.0",
     "@jterrazz/test": "^2.0.3",
-    "@jterrazz/typescript": "^2.0.5",
+    "@jterrazz/typescript": "^2.0.6",
     "@types/newrelic": "^9.14.8"
   },
   "dependencies": {

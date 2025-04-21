@@ -2,7 +2,7 @@ import type { LoggerPort } from '@jterrazz/logger';
 import { mock } from 'jest-mock-extended';
 import type { TransactionHandle } from 'newrelic';
 
-import { CapitalizedString, SegmentName } from '../../ports/monitoring.port.js';
+import { type CapitalizedString, type SegmentName } from '../../ports/monitoring.port.js';
 
 import { NewRelicMonitoringAdapter } from '../new-relic.adapter.js';
 

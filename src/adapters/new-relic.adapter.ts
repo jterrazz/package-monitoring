@@ -3,7 +3,11 @@ import type { LoggerPort } from '@jterrazz/logger';
 import type * as NewRelic from 'newrelic';
 import type { TransactionHandle } from 'newrelic';
 
-import { CapitalizedString, MonitoringPort, SegmentName } from '../ports/monitoring.port.js';
+import {
+    type CapitalizedString,
+    type MonitoringPort,
+    type SegmentName,
+} from '../ports/monitoring.port.js';
 
 interface MonitoringOptions {
     environment: string;
