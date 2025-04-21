@@ -1,19 +1,21 @@
-# Package Logger
+# Package Monitoring
 
-A TypeScript-based logging utility designed with clean architecture principles, providing flexible and extensible logging capabilities for Node.js and React Native applications.
+A TypeScript-based monitoring utility designed with clean port/adapter principles, providing flexible and extensible application monitoring capabilities for Node.js applications.
 
 ## Features
 
-- 📝 Type-safe logging interface
-- 🔌 Pluggable logging adapters
+- 📊 Type-safe monitoring interface
+- 🔌 Pluggable monitoring adapters
 - 💪 100% TypeScript
 - 🚀 Production-ready with no-op adapter
-- 📱 React Native compatible
+- 📈 NewRelic integration support
+- ⏱️ Transaction and segment monitoring
+- 📊 Custom metrics recording
 
 ## Installation
 
 ```bash
-npm install @jterrazz/logger
+npm install @jterrazz/monitoring
 ```
 
 ## Usage
@@ -21,42 +23,52 @@ npm install @jterrazz/logger
 ### Basic Usage
 
 ```typescript
+import { NewRelicMonitoringAdapter, NoopMonitoringAdapter } from '@jterrazz/monitoring';
 import { Logger } from '@jterrazz/logger';
-import { PinoLoggerAdapter } from '@jterrazz/logger/adapters/pino';
-import { NoopLoggerAdapter } from '@jterrazz/logger/adapters/noop';
 
-// Development environment with Pino
-const devLogger = new Logger({
-  adapter: new PinoLoggerAdapter({
-    prettyPrint: true,
-    level: 'debug',
-  }),
+// Development environment with NewRelic
+const devMonitoring = new NewRelicMonitoringAdapter({
+  environment: 'development',
+  licenseKey: process.env.NEW_RELIC_LICENSE_KEY,
+  logger: new Logger(/* ... */),
 });
 
 // Production environment with No-op
-const prodLogger = new Logger({
-  adapter: new NoopLoggerAdapter(),
+const prodMonitoring = new NoopMonitoringAdapter();
+
+// Initialize monitoring
+await monitoring.initialize();
+
+// Monitor a transaction
+await monitoring.monitorTransaction('User', 'Create', async () => {
+  // Your business logic here
 });
 
-// Log messages
-logger.info('Application started');
-logger.error('An error occurred', { error: new Error('Something went wrong') });
+// Monitor a segment
+await monitoring.monitorSegment('User/Profile/Update', async () => {
+  // Your operation here
+});
+
+// Record metrics
+monitoring.recordCount('User', 'Login', 1);
+monitoring.recordMeasurement('Performance', 'ResponseTime', 150);
 ```
 
 ### Available Adapters
 
-- **PinoLoggerAdapter**: Full-featured logging with Pino (recommended for development)
+- **NewRelicMonitoringAdapter**: Full-featured monitoring with NewRelic (recommended for production)
 
   ```typescript
-  new PinoLoggerAdapter({
-    prettyPrint: true, // Enable pretty printing
-    level: 'debug', // Set minimum log level
+  new NewRelicMonitoringAdapter({
+    environment: 'production',
+    licenseKey: process.env.NEW_RELIC_LICENSE_KEY,
+    logger: new Logger(/* ... */),
   });
   ```
 
-- **NoopLoggerAdapter**: Zero-overhead logging (recommended for client side production)
+- **NoopMonitoringAdapter**: Zero-overhead monitoring (recommended for development or testing)
   ```typescript
-  new NoopLoggerAdapter();
+  new NoopMonitoringAdapter();
   ```
 
 ## Architecture
@@ -64,9 +76,10 @@ logger.error('An error occurred', { error: new Error('Something went wrong') });
 This package follows the hexagonal (ports and adapters) architecture:
 
 - `src/ports/`: Contains the core interfaces and types
-- `src/adapters/`: Implements various logging adapters
-  - `pino.adapter.ts`: Pino-based logging
-  - `noop.adapter.ts`: No-operation logging
+  - `monitoring.port.ts`: Defines the monitoring interface
+- `src/adapters/`: Implements various monitoring adapters
+  - `new-relic.adapter.ts`: NewRelic-based monitoring
+  - `noop.adapter.ts`: No-operation monitoring
 
 ## Contributing
 
