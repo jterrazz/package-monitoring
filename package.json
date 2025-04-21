@@ -1,0 +1,33 @@
+{
+  "name": "@jterrazz/monitoring",
+  "author": "Jean-Baptiste Terrazzoni <contact@jterrazz.com>",
+  "version": "1.0.0",
+  "exports": {
+    ".": {
+      "require": "./dist/index.cjs",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "scripts": {
+    "build": "ts-compile",
+    "test": "jest",
+    "lint": "code-standards"
+  },
+  "devDependencies": {
+    "@jterrazz/logger": "^1.1.0",
+    "@jterrazz/quality": "^2.1.1",
+    "@jterrazz/test": "^2.0.3",
+    "@jterrazz/typescript": "^2.0.5",
+    "@types/newrelic": "^9.14.8"
+  },
+  "dependencies": {
+    "newrelic": "^12.18.0"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/"
+  }
+}
